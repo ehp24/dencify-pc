@@ -1,0 +1,33 @@
+# Python
+*.pyc
+*~
+__pycache__
+
+# misc 
+misc/
+
+# data
+*.las
+*.LAS
+data/raw/las/*
+result/*
+
+# Env
+.venv
+
+# macOS
+._*
+.DS_Store
+.fseventsd
+.Spotlight-V100
+
+# Windows
+Thumbs.db*
+ehthumbs*.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Visual Studio
+.vscode/
+.history/
+*.code-workspace
