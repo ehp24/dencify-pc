@@ -5,11 +5,11 @@ __pycache__
 
 # misc 
 misc/
+tester.py
 
 # data
 *.las
 *.LAS
-result/*
 
 # Env
 .venv

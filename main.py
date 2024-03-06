@@ -11,6 +11,7 @@ import time
 import cv2
 
 def read_img_uint32(filename):
+    """ Takes a single image path and returns np array representation of image in uint32."""
     assert os.path.exists(filename), "file not found: {}".format(filename)
     img_file = Image.open(filename)
     rgb_png = np.array(img_file, dtype='uint32')  # LAS stores its coordinates in uint32
@@ -19,22 +20,44 @@ def read_img_uint32(filename):
 
 # fetches CSV data of the images present in rgb images folder
 def read_csv(csvpath,imgs_paths_list):
+    """Extracts csv data for corresponding images in list of image paths.
+
+    Args:
+        csvpath (str): The path to the csv file.
+        imgs_paths_list (list): A list of paths (str) to image files.
+
+    Returns:
+        list: A list of dictionaries, each dict containing csv data for each correpsonding img in img_paths_list.
+    """
     
     img_names = [os.path.splitext(imgpath.split('/')[-1])[0] for imgpath in imgs_paths_list ] # list of img names instead of img paths
     
     with open(csvpath, newline='') as csvfile:
         reader = csv.DictReader(csvfile)
-        imgdata = [row for row in reader if row['file_name'] in img_names]
+        imgdata = [row for row in reader if row['file_name'] in img_names] # each row is a dict and represents data for one unique image
 
     # first = imgdata[0]
     # print(first['file_name'])
     
+    # each dict is a row in the csv file
+    # need to write test to check there is a correponding csv row to image match - i.e. must have same name 
     return imgdata
 
 def convertLAS2numpy(path2las):
+    """Creates a Numpy representation of all points in LAS file.
+
+    Args:
+        path2las (str): The path to LAS point cloud file to process.
+
+    Returns:
+        numpy.ndarray: An m*n Numpy array of data points, m = 8 for each data type (xcoord, ycoord etc) and n = number of points in LAS file.
+    """
     
-    las = laspy.read(path2las)
+    las = laspy.read(path2las) # creates LasData object instance which conatins all the points in the point cloud
    
+    # each las point has a real coord that would need to eb stored as a float64 due to decimals
+    # float64 requires much more memory and wuld be slower to process hence convert each coord to uint32 by applying a scale and offset
+    # hence to obtain the original raw coordinates, need to apply the specified scale and offset defined in the las header, to all the points
     x_scale, y_scale, z_scale = las.header.scales
     x_offset, y_offset, z_offset = las.header.offsets
     x_coords = (las.X * x_scale) + x_offset
@@ -42,15 +65,27 @@ def convertLAS2numpy(path2las):
     z_coords = (las.Z * z_scale) + z_offset
     ones = np.ones(len(x_coords))
     
-    reds  = (las.red)/256 #LAS stores RGB as 16-bit, but usually we want 8-bit so convert
+    reds  = (las.red)/256 #LAS stores RGB as 16-bit, but usually we want 8-bit so convert to 8bit by dividing by 256
     greens = (las.green)/256
     blues = (las.blue)/256 
     greyscale = (np.add(reds,(np.add(blues,greens))))/3
     homogeneous_data_matrix = np.vstack((x_coords,y_coords,z_coords,ones,blues,greens,reds,greyscale)) # returns [x,y,z,1,B,G,R,greyscale]
-
+    # first row is x, next row y, next row z
+    # each column represents a differnt point
     return homogeneous_data_matrix
 
 def rotMat(roll, pitch, heading, mode='norm'):
+    """Converts roll, pitch and yaw angles (degrees) into single rotation matrix.   COME BACK TO THIS =, NOT SURE WHETHER ANGLES ARE FLOATS OR INTS
+
+    Args:
+        roll (_type_): The roll angle in degrees.
+        pitch (_type_): The pitch angle in degrees.
+        heading (_type_): The heading or yaw angle in degrees.
+        mode (str, optional): Mode to combine roll pitch and yaw matrices, norm= yaw_mat @ pitch_mat @ roll_mat. Defaults to 'norm'.
+
+    Returns:
+        numpy.ndarray: A single rotation matrix describing combined roll pitch and yaw in one rotation.
+    """
     
     alpha = math.radians(heading)
     cosa = math.cos(alpha)
@@ -85,18 +120,35 @@ def rotMat(roll, pitch, heading, mode='norm'):
     return rotmat
 
 def extrinsicsMat(rph_list, xyz_list, error_correction): # orientation and position matrix of CCS rel to WCS
+    """Creates extrinsics matrix converting a point in the world coord system to camera coord system.
 
-    wcs2ccs = np.row_stack((np.column_stack((rotMat(180,0,0) ,np.array([[0],[0],[0]]))), np.array([0,0,0,1])))  # world coord system to camera coordinate system
-    convert2projangles = [90+rph_list[1],rph_list[0],-rph_list[2]] # according to the orinetation of the LAS file - very odd but found by trial and error
+    Args:
+        rph_list (list): A list of three angles in degrees (floats) in the form [roll, pitch, heading].
+        xyz_list (_type_): A list of coordinates in form [x,y,z].
+        error_correction (_type_): A list of error correction angles to add on in degrees (floats) in form [roll_ec, pitch_ec, heading_ec].
+
+    Returns:
+        numpy.ndarray: A 4x4 extrinsics matrix.
+    """
+
+    wcs2ccs = np.row_stack((np.column_stack((rotMat(180,0,0) ,np.array([[0],[0],[0]]))), np.array([0,0,0,1])))  # 4x4 matrix converting the world coord system to camera coordinate system
+    convert2projangles = [90+rph_list[1],rph_list[0],-rph_list[2]] # rph list is [roll, pitch, hgeading]. The orientation of the camera for that img wrt camera coord system according to the orinetation of the LAS file - very odd but found by trial and error
     t = np.swapaxes(np.array([xyz_list]),0,1) # in [[x],[y],[z]] rather than [x,y,z]
     A, B, C = np.add(convert2projangles,error_correction)
-    R = rotMat(A,B,C)
-    extrinsics_mat = (np.row_stack((np.column_stack((R,t)), np.array([0,0,0,1])))) @ wcs2ccs
-
+    R = rotMat(A,B,C) # create rot mat from euler angles of camersa roatation wrt camera coord systenm (inc ec)
+    extrinsics_mat = (np.row_stack((np.column_stack((R,t)), np.array([0,0,0,1])))) @ wcs2ccs # mat mult camera roation matrix+ tranlation vector with wcs2ccs to get extrinsics matrix
+    # extrunsuics matrix represents rotation of WCS relative to CCS, it converts world coord x,y,z to the same coordinates but in the CCS
     return extrinsics_mat
         
 def intrinsicsMat(focal_length_mm):
-    
+    """Creates camera intrinsics matrix from camera specs.
+
+    Args:
+        focal_length_mm (float): The focal length of camera in mm.
+
+    Returns:
+        numpy.ndarray: A 3x3 intrinsics matrix. 
+    """
     CCDW = 2464 # pixels, CCD (image) width 
     CCDH = 2056 # pixels, CCD (image) height
     Xpp = -0.00558 # mm, principle point x coord
@@ -111,6 +163,7 @@ def intrinsicsMat(focal_length_mm):
     K = np.array([[fx, 0, cx+(CCDW/2)],
                 [0, fy, cy+(CCDH/2)],
                 [0, 0, 1]])
+    # SHOULD PROBABLY PUT THIS DATA IN A FILE TXT AND THEN PULL THE DATA FROM THAT
     
     return K
     
@@ -196,7 +249,6 @@ def append_to_las(in_las, out_las):
                 outlas.append_points(points)
 
 def main():
-    
     
     start_time = time.time()
     
