@@ -3,7 +3,7 @@ import pytest
 import csv
 import numpy as np
 import laspy
-from densify_pc.dataprocessor import read_csv, convertLAS2numpy, interpolate_dmap
+from densify_pc.dataprocessor import read_csv, convertLAS2numpy, interpolate_dmap, convertnumpy2LAS
 
 @pytest.fixture
 def sample_csv(tmpdir):
@@ -72,3 +72,31 @@ def test_projected_dmap():
     assert isinstance(interpolated_dmap, np.ndarray)
     assert interpolated_dmap.shape == sample_dmap.shape
 
+
+
+def test_convertnumpy2LAS(tmpdir):
+    # Create a sample numpy array representing densified points and test
+    densified_points_np = np.array([[1.0, 2.0, 3.0],
+                                     [4.0, 5.0, 6.0],
+                                     [7.0, 8.0, 9.0],
+                                     [10.0, 11.0, 12.0],
+                                     [13.0, 14.0, 15.0],
+                                     [16.0, 17.0, 18.0]])
+
+    lasobject = laspy.LasData(laspy.LasHeader(point_format=7, version="1.4"))
+    z_offset = 10.0
+    newlas = convertnumpy2LAS(lasobject, densified_points_np, z_offset)
+
+    assert isinstance(newlas, laspy.LasData)
+
+    assert np.allclose(newlas.header.offsets, lasobject.header.offsets)
+    assert np.allclose(newlas.header.scales, lasobject.header.scales)
+    assert newlas.header.point_format.id == 7
+    assert newlas.header.version == "1.4"
+    
+    assert np.allclose(newlas.X, densified_points_np[0, :])
+    assert np.allclose(newlas.Y, densified_points_np[1, :])
+    assert np.allclose(newlas.Z, densified_points_np[2, :] + z_offset)
+    assert np.allclose(newlas.red, densified_points_np[3, :])
+    assert np.allclose(newlas.green, densified_points_np[4, :])
+    assert np.allclose(newlas.blue, densified_points_np[5, :])

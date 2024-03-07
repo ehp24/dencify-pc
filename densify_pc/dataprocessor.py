@@ -104,14 +104,11 @@ def convertnumpy2LAS(lasobject, densified_points_np,z_offset):
     header.add_extra_dim(laspy.ExtraBytesParams(name="random", type=np.int32))
     header.offsets = lasobject.header.offsets
     header.scales = lasobject.header.scales
-    # print(all_las_pts[2,:][0])
-    densified_points_np[2,:]=densified_points_np[2,:]+z_offset # maybe create another one for visual purposes?
-    # print(all_las_pts[2,:][0])
     newlas = laspy.LasData(header)
     
     newlas.X = densified_points_np[0,:]
     newlas.Y = densified_points_np[1,:]
-    newlas.Z = densified_points_np[2,:]
+    newlas.Z = densified_points_np[2,:] +z_offset
     newlas.red = densified_points_np[3,:]
     newlas.green = densified_points_np[4,:]
     newlas.blue = densified_points_np[5,:]
