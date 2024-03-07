@@ -102,7 +102,7 @@ def intrinsicsMat():
 
 
 
-def projection_WCS2PCS(csv_row, points ,img_np, las, error_correct):
+def projection_WCS2PCS(csv_row, points, img_np, las, error_correct):
     
     """Creates rgbd depth map and LAS point map of LAS points that coincide with the images pixels.
 

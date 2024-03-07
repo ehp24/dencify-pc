@@ -43,11 +43,11 @@ def main():
     for path2img in imgs_path_list:
         
         im_count+=1
-        
         img_name = (os.path.splitext(path2img)[0]).split('/')[-1] # name of img e.g. A11redlodge0006200010Lane1
         img_type = os.path.splitext(path2img)[1] # jpg
         filename = path2img.split('/')[-1]
-
+        img_array_uint32 = read_img_uint32(path2img) # img object in np
+        
         # extract the csv row (dict) for the correponsing img
         if img_name in csv_img_data.keys():
             csv_img_data = csv_img_data[img_name]
@@ -55,30 +55,18 @@ def main():
             not_present.append(filename)
             continue
 
-        # # create extrinsics and intrinsics matrix COULD THIS LIVE INSIDE PROJECTION AND NOT NEED TO BE HERE?
-        # f = 8.5 #mm
-        # rph = [float(data['roll[deg]']), float(data['pitch[deg]']), float(data['heading[deg]'])] # [roll, pitch, heading]
-        # xyz = [float(data['projectedX[m]']),float(data['projectedY[m]']),float(data['projectedZ[m]'])] # [x,y,z]
-        # extr_mat = extrinsicsMat(rph,xyz,error_correct)
-        # intr_mat = np.hstack((intrinsicsMat(f),np.array([[0.],[0.],[0.]])))
-        
-        # # image object in np
-        img_array_uint32 = read_img_uint32(path2img)
-         
-        # im_height = img_array_uint32.shape[0]
-        # im_width = img_array_uint32.shape[1]
-        
-        # project LAS points to img plane (pix coords)
-        rgbd, projectedimg, LAS_data_array = projection_WCS2PCS(csv_img_data, LAS_points, img_array_uint32, las, error_correct)
+        # project LAS points to img plane (pix coords) REDUNDANT INFO! RGBD?
+        rgbd, projectedimg, projected_LAS_data_map = projection_WCS2PCS(csv_img_data, LAS_points, img_array_uint32, las, error_correct)
         
         # interpolate the projected depth map
-        # mapped_LAS_pts_rgb = LAS_data_array[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16, though original rgb is redundsnt for now
-        projected_LAS_dmap = LAS_data_array[:,:,:3] # creates array with just [x_wc_uint32, r_wc_uin32, z_wc_uin32] projected depth map
+        # mapped_LAS_pts_rgb = proj_LAS_data_map[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16, though original rgb is redundsnt for now
+        projected_LAS_dmap = projected_LAS_data_map[:,:,:3] # damp = depthmap creates array with just [x_wc_uint32, r_wc_uin32, z_wc_uin32] projected depth map
         interpolated_dmap = interpolate_dmap(projected_LAS_dmap)
         
         imArray_uint32 = img_array_uint32 *256 #NOT SURE WHAT DOIG N HERE, CONVERTING UINT32 TO ???
         
         interpolated_im_depth_map = np.dstack((interpolated_dmap,imArray_uint32)) # combining the orginal rgb vals from the 2D img with the XYZ coords extracted from LAS and interpolated that proiject to the image area 
+        
         if skip_pts == True:
             interpolated_im_depth_map = interpolated_im_depth_map[::n,::n,:]
         interpolated_im_depth_map = np.round(interpolated_im_depth_map) # make sure theres no decimal places maybe?
@@ -89,11 +77,9 @@ def main():
         nan_row_array = ~np.isnan(new_LAS_points).any(axis = 0) # i think a boolean array where each element indicates whether the corresponding column in new_LAS_points contains at least one NaN value (True if it does, False otherwise)
         new_LAS_points = new_LAS_points[:,nan_row_array] 
         
-        # maybejust initilise all las pints before for loop, and check whetehr its empty or not, rather than do im count
         # combining all of the images points otgether if there ar emultiple images in a super array. first row is x, next y, next z etc. Only 6, xyzrgb
         if im_count == 1:
             all_las_pts = new_LAS_points
-        
         else:
             all_las_pts = np.concatenate((all_las_pts,new_LAS_points),axis=1)  
         
