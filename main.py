@@ -182,6 +182,7 @@ def projection_WCS2PCS(intrinsicsMat:np.ndarray, extrinsicsMat:np.ndarray, point
     Returns:
         numpy.ndarray: rgbd_map, LAS_map and projected img.
     """
+    # this function basiaclly projects the LAS onto pix coord system so it can obtain all thr LAS points thst lie inside image bounds
     las = laspy.read(path2las) # so that we dont have to read las twice, we should do the reading in main script then pas in the la sobject instead
     x_offset, y_offset, z_offset = las.header.offsets
     x_scale, y_scale, z_scale = las.header.scales
@@ -279,13 +280,10 @@ def main():
     projimg_folder = os.path.join(rootdir_path,"result","projected images")
     # fetched all csv rows for the imgs present in data folder
     csvdata = read_csv(csv_path,imgs_path_list)
-    csv_img_data = csvdata.copy()
+    csv_img_data = csvdata.copy() # REDUNDANT?
 
     
     im_count = 0
-    
-    
-    
     
     # as shown in read_csv function, the values in the columns can be foudn by doing row['file_name']
     
@@ -293,8 +291,6 @@ def main():
     no_rows_extracted = len(csv_img_data) #i.e. the number of imgs we are actually oeprating on
     not_present = []
     LAS_points = convertLAS2numpy(LAS_path)
-    
-
     
     # SETTING WHETHER WE WANT TO SKIP POINTS FOR LOWER DENSIFICATION
     skip_pts = True
@@ -354,6 +350,7 @@ def main():
         
         
         mapped_LAS_pts_wc = LAS_data_array[:,:,:3] # creates array with just x_wc_uint32, r_wc_uin32, z_wc_uin32
+        # orgihnal rgb of las is perhaps redundant
         mapped_LAS_pts_rgb = LAS_data_array[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16
 
         # now interpolate    # ALWAYS REMEBER - THE FIRST INDEX IS THE ROW I.E. Y COORD!
@@ -382,7 +379,6 @@ def main():
         interNearest_map_y = np.clip(interNearest_map[:,:,1], np.nanmin(data_las[:,1]),np.nanmax(data_las[:,1]))
         # for clipping:
         # interNearest_map_z = np.clip(interNearest_map[:,:,2], np.nanmin(data_las[:,2]),np.nanmin(data_las[:,2]) + 0.1*(np.nanmax(data_las[:,2]) - np.nanmin(data_las[:,2])))
-        
         interNearest_map_z = np.clip(interNearest_map[:,:,2], np.nanmin(data_las[:,2]),np.nanmin(data_las[:,2]))
 
         interNearest_map = np.dstack((interNearest_map_x,interNearest_map_y,interNearest_map_z))
@@ -397,7 +393,7 @@ def main():
 
         
         
-        interpolated_im_depth_map = np.round(interpolated_im_depth_map)
+        interpolated_im_depth_map = np.round(interpolated_im_depth_map) # make sure theres no decimal places maybe?
         
         # np.savetxt("tmp_array_end.csv",interpolated_im_depth_map[5,:,:], delimiter = ",")
         # print(np.max(interpolated_im_depth_map[:,:,0]),np.min(interpolated_im_depth_map[:,:,0]))
@@ -406,14 +402,14 @@ def main():
         # interpolated_im_depth_map = interpolated_im_depth_map[0:interpolated_im_depth_map.shape[0]:10,0:interpolated_im_depth_map.shape[1]:10,:,:,:]
         
         
-        
-        
         no_pts = interpolated_im_depth_map.shape[0]*interpolated_im_depth_map.shape[1] # number of new las points should just be h x w of the image depth map array
         new_LAS_points = interpolated_im_depth_map.reshape((no_pts,6)).T # convert 3D array into 2D array of all the points, as converting to LAS doesnt need it in the image structure so [x1,x2,x3...], [y1,y2,y3,...], [z1,z2,z3,....],[r1,r2,r3],....etc
-        nan_row_array = ~np.isnan(new_LAS_points).any(axis = 0)
+        nan_row_array = ~np.isnan(new_LAS_points).any(axis = 0) # i think a boolean array where each element indicates whether the corresponding column in new_LAS_points contains at least one NaN value (True if it does, False otherwise)
         
-        new_LAS_points = new_LAS_points[:,nan_row_array]
+        new_LAS_points = new_LAS_points[:,nan_row_array] 
         
+        # maybejust initilise all las pints before for loop, and check whetehr its empty or not, rather than do im count
+        # combining all of the images points otgether if there ar emultiple images in a super array. first row is x, next y, next z etc. Only 6, xyzrgb
         if im_count == 1:
             all_las_pts = new_LAS_points
         
@@ -424,14 +420,15 @@ def main():
         
     print("Now creating the LAS file -------->")
     # now we have las points of all images, create a LAS file
+    # reading again! maybe just have a fucntion that returns the la sobject....
     lasfile = laspy.read(LAS_path)
     header = laspy.LasHeader(point_format=7, version="1.4")
     header.add_extra_dim(laspy.ExtraBytesParams(name="random", type=np.int32))
     header.offsets = lasfile.header.offsets
     header.scales = lasfile.header.scales
-    print(all_las_pts[2,:][0])
-    all_las_pts[2,:]=all_las_pts[2,:]+increase_z
-    print(all_las_pts[2,:][0])
+    # print(all_las_pts[2,:][0])
+    all_las_pts[2,:]=all_las_pts[2,:]+increase_z # maybe create another one for visual purposes?
+    # print(all_las_pts[2,:][0])
     newlas = laspy.LasData(header)
     
     newlas.X = all_las_pts[0,:]
