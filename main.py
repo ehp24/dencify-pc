@@ -3,16 +3,10 @@ import os
 import laspy
 import numpy as np
 import math
-from scipy import interpolate
 import time
 from densify_pc.utils import read_img_uint32
-from densify_pc.dataprocessor import read_csv, convertLAS2numpy
+from densify_pc.dataprocessor import read_csv, convertLAS2numpy, interpolate_dmap
 from densify_pc.projection import rotMat, extrinsicsMat, intrinsicsMat, projection_WCS2PCS
-
-def interpolate_image(): 
-    # interpolates the availaible projected points on the image array grid
-    pass
-
 
 def main():
     
@@ -42,93 +36,52 @@ def main():
 
     # Output settings
     increase_z = 0 # z offset for visual aid (as dense pc points coincide with normal pc points) LIMIT THIS
-    skip_pts = True # if we want to skip some points for faster computation/ lower densification
+    skip_pts = True # if we want to skip some points for lower densification + less memory (still processed all of them tho so not faster..)
     n = 3 # skips every nth col and every nth row, hence nxn times less points
 
     for path2img in imgs_path_list:
         
-        img_name = (os.path.splitext(path2img)[0]).split('/')[-1] # name of img e.g. A11redlodge0006200010Lane1
-        img_type = os.path.splitext(path2img)[1] # jpg
-        filename = path2img.split('/')[-1]
-        data = None
-
-        # as shown in read_csv function, the values in the columns can be foudn by doing row['file_name']
-        for row in csv_img_data: #extract the correct row for correspondign img
-            if row['file_name'] == img_name:
-                data = row
-                break #there shouls be only one row that correponds to an image, so exit once we have foudn the row
-                
-        if data == None: # if images exist in data folder that are not present in csv file, dont let it go through rest of the code, skip to next iteration
-            not_present.append(filename)
-            continue
-
+        # update variables for progress bar
         im_count+=1
         progress = int(im_count/no_rows_extracted*100)
         
-        roll = float(data['roll[deg]'])
-        pitch = float(data['pitch[deg]'])
-        heading = float(data['heading[deg]'])
-        x = float(data['projectedX[m]'])
-        y = float(data['projectedY[m]'])
-        z = float(data['projectedZ[m]'])
-        rph = [roll,pitch,heading]
-        xyz = [x,y,z]
-        
+        img_name = (os.path.splitext(path2img)[0]).split('/')[-1] # name of img e.g. A11redlodge0006200010Lane1
+        img_type = os.path.splitext(path2img)[1] # jpg
+        filename = path2img.split('/')[-1]
+
+        # extract the csv row (dict) for the correponsing img
+        if img_name in csv_img_data.keys():
+            data = csv_img_data[img_name]
+        else: # img in data folder is not found in csv file, skip img
+            not_present.append(filename)
+            continue
+
+        # create extrinsics and intrinsics matrix COULD THIS LIVE INSIDE PROJECTION AND NOT NEED TO BE HERE?
         f = 8.5 #mm
-        exMat = extrinsicsMat(rph,xyz,error_correct)
-        K = np.hstack((intrinsicsMat(f),np.array([[0.],[0.],[0.]])))
+        rph = [float(data['roll[deg]']), float(data['pitch[deg]']), float(data['heading[deg]'])] # [roll, pitch, heading]
+        xyz = [float(data['projectedX[m]']),float(data['projectedY[m]']),float(data['projectedZ[m]'])] # [x,y,z]
+        extr_mat = extrinsicsMat(rph,xyz,error_correct)
+        intr_mat = np.hstack((intrinsicsMat(f),np.array([[0.],[0.],[0.]])))
         
-        imArray_uint32 = read_img_uint32(path2img) 
-        im_height = imArray_uint32.shape[0]
-        im_width = imArray_uint32.shape[1]
+        # convert image to numpy and get size
+        img_array_uint32 = read_img_uint32(path2img) 
+        im_height = img_array_uint32.shape[0]
+        im_width = img_array_uint32.shape[1]
         
-        rgbd, projectedimg, LAS_data_array = projection_WCS2PCS(K, exMat, LAS_points, im_width, im_height, LAS_path)
+        # project LAS points to img plane (pix coords)
+        rgbd, projectedimg, LAS_data_array = projection_WCS2PCS(intr_mat, extr_mat, LAS_points, im_width, im_height, LAS_path)
         
+        # interpolate the projected depth map
+        # mapped_LAS_pts_rgb = LAS_data_array[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16, though original rgb is redundsnt for now
+        projected_LAS_dmap = LAS_data_array[:,:,:3] # creates array with just [x_wc_uint32, r_wc_uin32, z_wc_uin32] projected depth map
+        interpolated_dmap = interpolate_dmap(projected_LAS_dmap)
         
-        mapped_LAS_pts_wc = LAS_data_array[:,:,:3] # creates array with just x_wc_uint32, r_wc_uin32, z_wc_uin32
-        # orgihnal rgb of las is perhaps redundant
-        mapped_LAS_pts_rgb = LAS_data_array[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16
-
-        # now interpolate    # ALWAYS REMEBER - THE FIRST INDEX IS THE ROW I.E. Y COORD!
-        x_cols = np.arange(0,mapped_LAS_pts_wc.shape[1],1)
-        y_rows = np.arange(0,mapped_LAS_pts_wc.shape[0],1)
-        x_grid, y_grid =np.meshgrid(x_cols,y_rows) # makes two grids, both of the shape of the img or x_cols x y_cols and fills the first with all the xvalues and the secodn one with all the y vals
+        imArray_uint32 = img_array_uint32 *256 #NOT SURE WHAT DOIG N HERE, CONVERTING UINT32 TO ???
+        interpolated_im_depth_map = np.dstack((interpolated_dmap,imArray_uint32)) # combining the orginal rgb vals from the 2D img with the XYZ coords extracted from LAS and interpolated that proiject to the image area 
         
-        # the below argwhere usualy gives [ [x1,y1], [x3,y3], ... [xN,yN]] etc, i.e. a list of coords where we dont have [0,0,0](black pixel). the next two lines slplit this into the x values, then the y values
-        y_las = np.argwhere((mapped_LAS_pts_wc !=0).any(axis=2))[:,0] # x coords of img pix plane where we have data pts from projected las
-        x_las = np.argwhere((mapped_LAS_pts_wc !=0).any(axis=2))[:,1] # y coords of img pix plane where we have data pts from projected las
-        data_las = mapped_LAS_pts_wc[y_las,x_las] # gives all the array values [x_wc, y_wc, z_wc] that have non 0 value, i.e. the x_wc_16,y_wc_16,z_wc_16 values of the projected points, i.e. all the poitns stored at each xlas, ylas
-        
-
-       
-        # create interpolated array with full XYZ_wc values at every img pixel
-        # interLinear_map = interpolate.griddata((x_las,y_las),data_las,(x_grid,y_grid),method='linear') #for soem reason interlinear does not work
-        interNearest_map = interpolate.griddata((x_las,y_las),data_las,(x_grid,y_grid),method='linear')
-        
-        # print(np.min(data_las[:,0]))
-        # input()
-        # print(interNearest_map)
-        # input()
-        
-        
-        interNearest_map_x = np.clip(interNearest_map[:,:,0], np.nanmin(data_las[:,0]),np.nanmax(data_las[:,0]))
-        interNearest_map_y = np.clip(interNearest_map[:,:,1], np.nanmin(data_las[:,1]),np.nanmax(data_las[:,1]))
-        # for clipping:
-        # interNearest_map_z = np.clip(interNearest_map[:,:,2], np.nanmin(data_las[:,2]),np.nanmin(data_las[:,2]) + 0.1*(np.nanmax(data_las[:,2]) - np.nanmin(data_las[:,2])))
-        interNearest_map_z = np.clip(interNearest_map[:,:,2], np.nanmin(data_las[:,2]),np.nanmin(data_las[:,2]))
-
-        interNearest_map = np.dstack((interNearest_map_x,interNearest_map_y,interNearest_map_z))
-        
-   
-    
-        # print(f"internearest map:{interNearest_map.shape}")
-        imArray_uint32 = read_img_uint32(path2img) *256
-        interpolated_im_depth_map = np.dstack((interNearest_map,imArray_uint32)) # combining the orginal rgb vals from the 2D img with the XYZ coords extracted from LAS and interpolated that proiject to the image area 
         if skip_pts == True:
             interpolated_im_depth_map = interpolated_im_depth_map[::n,::n,:]
 
-        
-        
         interpolated_im_depth_map = np.round(interpolated_im_depth_map) # make sure theres no decimal places maybe?
         
         # np.savetxt("tmp_array_end.csv",interpolated_im_depth_map[5,:,:], delimiter = ",")
