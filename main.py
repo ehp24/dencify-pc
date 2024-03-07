@@ -36,7 +36,6 @@ def main():
     error_correct = [-1,-0.5,1.5] 
 
     # Output settings
-    increase_z = 0 # z offset for visual aid 
     skip_pts = True # skip some points for lower densification + less memory 
     n = 3 # skips every nth col and every nth row, hence nxn times less points
 
@@ -90,7 +89,7 @@ def main():
     print("Now creating the LAS file -------->")
 
     # convert interpolated np array points to LAS object
-    densified_las = convertnumpy2LAS(las,all_las_pts,increase_z) 
+    densified_las = convertnumpy2LAS(las,all_las_pts,z_offset=200) 
     newlasname = os.path.join(rootdir_path,"result","result_pc"+'.las')
     densified_las.write(newlasname)
     

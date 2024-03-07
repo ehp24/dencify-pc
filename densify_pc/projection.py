@@ -62,13 +62,12 @@ def extrinsicsMat(rph_list, xyz_list, error_correction): # orientation and posit
         numpy.ndarray: A 4x4 extrinsics matrix.
     """
 
-    wcs2ccs = np.row_stack((np.column_stack((rotMat(180,0,0) ,np.array([[0],[0],[0]]))), np.array([0,0,0,1])))  # 4x4 matrix converting the world coord system to camera coordinate system
-    convert2projangles = [90+rph_list[1],rph_list[0],-rph_list[2]] # rph list is [roll, pitch, hgeading]. The orientation of the camera for that img wrt camera coord system according to the orinetation of the LAS file - very odd but found by trial and error
+    wcs2ccs = np.row_stack((np.column_stack((rotMat(180,0,0) ,np.array([[0],[0],[0]]))), np.array([0,0,0,1])))  # WCS 2 CCS
+    convert2projangles = [90+rph_list[1],rph_list[0],-rph_list[2]] # camera orientation 
     t = np.swapaxes(np.array([xyz_list]),0,1) # in [[x],[y],[z]] rather than [x,y,z]
     A, B, C = np.add(convert2projangles,error_correction)
-    R = rotMat(A,B,C) # create rot mat from euler angles of camersa roatation wrt camera coord systenm (inc ec)
-    extrinsics_mat = (np.row_stack((np.column_stack((R,t)), np.array([0,0,0,1])))) @ wcs2ccs # mat mult camera roation matrix+ tranlation vector with wcs2ccs to get extrinsics matrix
-    # extrunsuics matrix represents rotation of WCS relative to CCS, it converts world coord x,y,z to the same coordinates but in the CCS
+    R = rotMat(A,B,C) # create rot mat from euler angles of camera roatation wrt CCS
+    extrinsics_mat = (np.row_stack((np.column_stack((R,t)), np.array([0,0,0,1])))) @ wcs2ccs # roatation of WCS wrt image CS
     return extrinsics_mat
 
 
@@ -93,9 +92,7 @@ def intrinsicsMat():
     
     K = np.array([[fx, 0, cx+(CCDW/2)],
                 [0, fy, cy+(CCDH/2)],
-                [0, 0, 1]])
-    # SHOULD PROBABLY PUT THIS DATA IN A FILE TXT AND THEN PULL THE DATA FROM THAT
-    
+                [0, 0, 1]])    
     return K
 
 
@@ -106,19 +103,11 @@ def projection_WCS2PCS(csv_row, points, img_np, las, error_correct):
     
     """Creates rgbd depth map and LAS point map of LAS points that coincide with the images pixels.
 
-    Args:
-        intrinsicsMat (numpy.ndarray): The camera intrinsics matrix.
-        extrinsicsMat (numpy.ndarray): The extrinsics matrix.
-        points (numpy.ndarray): The LAS points with columns being each point, rows being x,y,z,1,r,g,b,greyscale.
-        map_width (_type_): The width of map (img) in pixels.
-        map_height (_type_): The height of map in pixels.
-        las (laspy.lasData): The las object.
-
     Returns:
         numpy.ndarray: rgbd_map, LAS_map and projected img.
     """
     
-    # create extrinsics and intrinsics matrix COULD THIS LIVE INSIDE PROJECTION AND NOT NEED TO BE HERE?
+    # create extrinsics and intrinsics matrix
     rph = [float(csv_row['roll[deg]']), float(csv_row['pitch[deg]']), float(csv_row['heading[deg]'])] # [roll, pitch, heading]
     xyz = [float(csv_row['projectedX[m]']),float(csv_row['projectedY[m]']),float(csv_row['projectedZ[m]'])] # [x,y,z]
     extr_mat = extrinsicsMat(rph,xyz,error_correct)
@@ -128,16 +117,9 @@ def projection_WCS2PCS(csv_row, points, img_np, las, error_correct):
     map_height = img_np.shape[0]
     map_width = img_np.shape[1]
         
-        
-        
-        
-    # this function basiaclly projects the LAS onto pix coord system so it can obtain all thr LAS points thst lie inside image bounds
-    # las = laspy.read(path2las) # so that we dont have to read las twice, we should do the reading in main script then pas in the la sobject instead
     x_offset, y_offset, z_offset = las.header.offsets
     x_scale, y_scale, z_scale = las.header.scales
-    
-    "depth_map = np.zeros(shape=(map_height, map_width), dtype=np.uint16)"
-    
+        
     rgbd_map = np.zeros(shape=(map_height, map_width,4), dtype=np.uint8) # each element at coord x,y has array [r,g,b,depth from cam cneter] with rgb in uint8 (normal), is rgb image wtih depth value for each coloured pixel
     LAS_data_map = np.zeros(shape=(map_height, map_width,6), dtype='uint32') # stores [x_wc,y_wc,z_wc,r_wc_uint16,g_wc_uint16,b_wc_uint16] so all xyz and rgb of real world points but in LAS format that are captured in img
     LAS_new = []
@@ -155,11 +137,10 @@ def projection_WCS2PCS(csv_row, points, img_np, las, error_correct):
         # this for loop goes row by row, i.e. each points data by point 
         
         # maybe here further disect u,v = ptpix etc
-        if 0 < pt_pix[0] < map_width and 0 < pt_pix[1] < map_height and pt_cam[2]>=0 : # only keep projected points that are within the actual map boundary, and if Z_ccs >0 (so we only get points INFORNT OF CAMERA)
+        if 0 < pt_pix[0] < map_width and 0 < pt_pix[1] < map_height and pt_cam[2]>=0 : # filter for projected points within the actual map boundary, and if Z_ccs >0 
             
             discretised_pt_pix = (int(pt_pix[0]), int(pt_pix[1])) # we cannot have decimals of pixels, so turn (x_proj_pixcs, y_proj_pixcs)  into ints 
             
-            # now we know which points are in our image boundary, we now want to create a densified pc
             # need to convert the valid points back into LAS compatible format (uint32)
             x_wc_uint32 = (pt_wcs[0] - x_offset)/x_scale
             y_wc_uint32 = (pt_wcs[1] - y_offset)/y_scale
@@ -174,20 +155,10 @@ def projection_WCS2PCS(csv_row, points, img_np, las, error_correct):
             b_wc_uint16 = b_wc_uint8*256
             g_wc_uint16 = g_wc_uint8*256
             r_wc_uint16 = r_wc_uint8*256
-            
-            #  old code
-            # existing_depth_val = depth_map[discretised_pt_pix[1], discretised_pt_pix[0]]
-            # depth_val = depth_factor * np.sqrt(np.sum(np.square(pt_cam))) 
-        
-            # if existing_depth_val == 0:
-            #     depth_map[discretised_pt_pix[1], discretised_pt_pix[0]] = depth_val
-            # else:
-            #     depth_map[discretised_pt_pix[1], discretised_pt_pix[0]] = (existing_depth_val+depth_val)/2
-            
 
             # Colour depth map (rgbd) - projected points onto black plain image with the correct colours and distance from cam center 
             existing_depth = rgbd_map[discretised_pt_pix[1], discretised_pt_pix[0]][3]
-            depth = np.sqrt(np.sum(np.square(pt_cam[:3]))) # depth from the camera centre, as these pts are defined in cam coord system. square x,y,z, sum them then sqrt
+            depth = np.sqrt(np.sum(np.square(pt_cam[:3]))) # depth from the camera centre, as these pts are defined in cam coord system. 
             
             # these two do the excat same thing if else so combine them!
             if existing_depth == 0:
