@@ -31,17 +31,17 @@ def read_csv(csvpath,imgs_paths_list):
 
 
 
-def convertLAS2numpy(path2las):
-    """Creates a Numpy representation of all points in LAS file.
+def convertLAS2numpy(las):
+    """Creates a Numpy representation of all points in LAS.
 
     Args:
-        path2las (str): The path to LAS point cloud file to process.
+        las (laspy.LasData): The las object instance.
 
     Returns:
         numpy.ndarray: An m*n Numpy array of data points, m = 8 for each data type (xcoord, ycoord etc) and n = number of points in LAS file.
     """
     
-    las = laspy.read(path2las) # creates LasData object instance which conatins all the points in the point cloud
+    # las = laspy.read(path2las) # creates LasData object instance which conatins all the points in the point cloud
    
     # each las point has a real coord that would need to eb stored as a float64 due to decimals
     # float64 requires much more memory and wuld be slower to process hence convert each coord to uint32 by applying a scale and offset
@@ -97,3 +97,24 @@ def interpolate_dmap(projected_dmap):
     interp_dmap = np.dstack((interp_map_x,interp_map_y,interp_map_z)) # interpolated depth map [x,y,z] at each [u,v] pixel
 # interpolates the availaible projected points on the image array grid
     return interp_dmap
+
+
+def convertnumpy2LAS(lasobject, densified_points_np,z_offset):
+    header = laspy.LasHeader(point_format=7, version="1.4")
+    header.add_extra_dim(laspy.ExtraBytesParams(name="random", type=np.int32))
+    header.offsets = lasobject.header.offsets
+    header.scales = lasobject.header.scales
+    # print(all_las_pts[2,:][0])
+    densified_points_np[2,:]=densified_points_np[2,:]+z_offset # maybe create another one for visual purposes?
+    # print(all_las_pts[2,:][0])
+    newlas = laspy.LasData(header)
+    
+    newlas.X = densified_points_np[0,:]
+    newlas.Y = densified_points_np[1,:]
+    newlas.Z = densified_points_np[2,:]
+    newlas.red = densified_points_np[3,:]
+    newlas.green = densified_points_np[4,:]
+    newlas.blue = densified_points_np[5,:]
+    return newlas
+    
+    

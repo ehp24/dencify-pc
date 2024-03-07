@@ -5,7 +5,7 @@ import numpy as np
 import math
 import time
 from densify_pc.utils import read_img_uint32
-from densify_pc.dataprocessor import read_csv, convertLAS2numpy, interpolate_dmap
+from densify_pc.dataprocessor import read_csv, convertLAS2numpy, interpolate_dmap, convertnumpy2LAS
 from densify_pc.projection import rotMat, extrinsicsMat, intrinsicsMat, projection_WCS2PCS
 
 def main():
@@ -28,8 +28,9 @@ def main():
     im_count = 0
     not_present = []
     
+    las = laspy.read(LAS_path) # extract LAS data from path
     # convert LAS points to numpy format
-    LAS_points = convertLAS2numpy(LAS_path)
+    LAS_points = convertLAS2numpy(las)
     
     # Manually found error corrections - will vary for different highways 
     error_correct = [-1,-0.5,1.5] # for first lane of A11 Red lodge, Lane 1 MAYBE PUT THIS IN DATA FILE SEPARATELY
@@ -41,9 +42,7 @@ def main():
 
     for path2img in imgs_path_list:
         
-        # update variables for progress bar
         im_count+=1
-        progress = int(im_count/no_rows_extracted*100)
         
         img_name = (os.path.splitext(path2img)[0]).split('/')[-1] # name of img e.g. A11redlodge0006200010Lane1
         img_type = os.path.splitext(path2img)[1] # jpg
@@ -77,24 +76,16 @@ def main():
         interpolated_dmap = interpolate_dmap(projected_LAS_dmap)
         
         imArray_uint32 = img_array_uint32 *256 #NOT SURE WHAT DOIG N HERE, CONVERTING UINT32 TO ???
-        interpolated_im_depth_map = np.dstack((interpolated_dmap,imArray_uint32)) # combining the orginal rgb vals from the 2D img with the XYZ coords extracted from LAS and interpolated that proiject to the image area 
         
+        interpolated_im_depth_map = np.dstack((interpolated_dmap,imArray_uint32)) # combining the orginal rgb vals from the 2D img with the XYZ coords extracted from LAS and interpolated that proiject to the image area 
         if skip_pts == True:
             interpolated_im_depth_map = interpolated_im_depth_map[::n,::n,:]
-
         interpolated_im_depth_map = np.round(interpolated_im_depth_map) # make sure theres no decimal places maybe?
         
-        # np.savetxt("tmp_array_end.csv",interpolated_im_depth_map[5,:,:], delimiter = ",")
-        # print(np.max(interpolated_im_depth_map[:,:,0]),np.min(interpolated_im_depth_map[:,:,0]))
-        # print(np.max(interpolated_im_depth_map[:,:,1]),np.min(interpolated_im_depth_map[:,:,1]))
-        # print(np.max(interpolated_im_depth_map[:,:,2]),np.min(interpolated_im_depth_map[:,:,2]))
-        # interpolated_im_depth_map = interpolated_im_depth_map[0:interpolated_im_depth_map.shape[0]:10,0:interpolated_im_depth_map.shape[1]:10,:,:,:]
-        
-        
+        # data to create LAS 
         no_pts = interpolated_im_depth_map.shape[0]*interpolated_im_depth_map.shape[1] # number of new las points should just be h x w of the image depth map array
         new_LAS_points = interpolated_im_depth_map.reshape((no_pts,6)).T # convert 3D array into 2D array of all the points, as converting to LAS doesnt need it in the image structure so [x1,x2,x3...], [y1,y2,y3,...], [z1,z2,z3,....],[r1,r2,r3],....etc
         nan_row_array = ~np.isnan(new_LAS_points).any(axis = 0) # i think a boolean array where each element indicates whether the corresponding column in new_LAS_points contains at least one NaN value (True if it does, False otherwise)
-        
         new_LAS_points = new_LAS_points[:,nan_row_array] 
         
         # maybejust initilise all las pints before for loop, and check whetehr its empty or not, rather than do im count
@@ -105,36 +96,18 @@ def main():
         else:
             all_las_pts = np.concatenate((all_las_pts,new_LAS_points),axis=1)  
         
-        print(f"{progress}% done ------- {im_count}/{no_rows_extracted} images completed")
-        
-    print("Now creating the LAS file -------->")
-    # now we have las points of all images, create a LAS file
-    # reading again! maybe just have a fucntion that returns the la sobject....
-    lasfile = laspy.read(LAS_path)
-    header = laspy.LasHeader(point_format=7, version="1.4")
-    header.add_extra_dim(laspy.ExtraBytesParams(name="random", type=np.int32))
-    header.offsets = lasfile.header.offsets
-    header.scales = lasfile.header.scales
-    # print(all_las_pts[2,:][0])
-    all_las_pts[2,:]=all_las_pts[2,:]+increase_z # maybe create another one for visual purposes?
-    # print(all_las_pts[2,:][0])
-    newlas = laspy.LasData(header)
+        # update variables for progress bar
+        progress = int(im_count/no_rows_extracted*100)
+        print(f"{progress}% done ------- {im_count}/{no_rows_extracted} images processed")
     
-    newlas.X = all_las_pts[0,:]
-    newlas.Y = all_las_pts[1,:]
-    newlas.Z = all_las_pts[2,:]
-    newlas.red = all_las_pts[3,:]
-    newlas.green = all_las_pts[4,:]
-    newlas.blue = all_las_pts[5,:]
+    
+    print("Now creating the LAS file -------->")
 
-    # newlasname = rootdir_path +f"/Result/LAS result/projected_las"+ LAS_path.split('/')[-1]
+    # convert interpolated np array points to LAS object
+    densified_las = convertnumpy2LAS(las,all_las_pts,increase_z) 
     
     newlasname = os.path.join(rootdir_path,"result","result_pc"+'.las') # maybe keep name of original image in this 
-    
-    
-    newlas.write(newlasname)
-
-    
+    densified_las.write(newlasname)
     
     if no_rows_extracted != no_imgs:
         print(f"WARNING: there are {no_imgs} images present but only {no_rows_extracted} images were found in the existing csv file." )
@@ -147,12 +120,6 @@ def main():
 if __name__ == '__main__':
     main()
     
-    
-    
-# CHECKS
-# need to make sure the images actually go into given point cloud
-# can we automate this?
-# e.g search a LAS and find the min and max gps time - if the image doesnt fall within this then we discard?
-# for now assume a;l; images concide in the LAS
+
 
 
