@@ -60,18 +60,15 @@ def test_convertLAS2numpy(fake_las):
 
 
 @pytest.fixture
-def sample_projected_dmap():
+def test_projected_dmap():
     # Create a sample projected depth map
 
     sample_dmap = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
                             [[0, 0, 0], [13.0, 14.0, 15.0], [16.0, 17.0, 18.0]],
                             [[19.0, 20.0, 21.0], [0, 0, 0], [25.0, 26.0, 27.0]]])
 
-    return sample_dmap
 
-def test_interpolate_dmap(sample_projected_dmap):
-    # Test the interpolate_dmap function
-    interpolated_dmap = interpolate_dmap(sample_projected_dmap)
+    interpolated_dmap = interpolate_dmap(sample_dmap)
     assert isinstance(interpolated_dmap, np.ndarray)
-    assert interpolated_dmap.shape == sample_projected_dmap.shape
+    assert interpolated_dmap.shape == sample_dmap.shape
 
