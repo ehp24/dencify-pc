@@ -9,13 +9,14 @@ from densify_pc.utils import read_img_uint32
 from densify_pc.dataprocessor import read_csv, convertLAS2numpy
 from densify_pc.projection import rotMat, extrinsicsMat, intrinsicsMat, projection_WCS2PCS
 
-def interpolateImage(): 
+def interpolate_image(): 
     # interpolates the availaible projected points on the image array grid
     pass
 
 
 def main():
     
+    # initialise time 
     start_time = time.time()
     
     # fetch paths to data
@@ -24,45 +25,34 @@ def main():
     imgs_path_list = sorted(glob.glob(os.path.join(rootdir_path,'data/raw/rgb/*')),reverse=True) # returns lsit of images, dont constrain it to be a specific filetype incase png or jpg?
     LAS_path = (glob.glob(os.path.join(rootdir_path,'data/raw/las/*.LAS')))[0] #should allow LAS or las, and should check we only hva eone file
     
-    # fetched all csv rows for the imgs present in data folder
-    csvdata = read_csv(csv_path,imgs_path_list)
-    csv_img_data = csvdata.copy() # REDUNDANT?
-
+    # fetch corresponding csv data for the imgs present
+    csv_img_data = read_csv(csv_path,imgs_path_list)
     
-    im_count = 0
-    
-    # as shown in read_csv function, the values in the columns can be foudn by doing row['file_name']
-    
+    # data about number of images for progress tracking
     no_imgs = len(imgs_path_list)
     no_rows_extracted = len(csv_img_data) #i.e. the number of imgs we are actually oeprating on
+    im_count = 0
     not_present = []
+    
+    # convert LAS points to numpy format
     LAS_points = convertLAS2numpy(LAS_path)
     
-    # SETTING WHETHER WE WANT TO SKIP POINTS FOR LOWER DENSIFICATION
-    skip_pts = True
-    # every nth column taken, and every nth row, hence nxn times less points
-    n = 3
-    
-    # ERROR CORRECTIONS - bestEC means best error correction (for first lane of A11 Red lodge, Lane 1)
-    bestEC = [-1,-0.5,1.5]
-    noEC = [0,0,0]
-    error_correct = bestEC
-    testname = f"finalLASresult"
+    # Manually found error corrections - will vary for different highways 
+    error_correct = [-1,-0.5,1.5] # for first lane of A11 Red lodge, Lane 1 MAYBE PUT THIS IN DATA FILE SEPARATELY
 
-    # for if you want to view the denser PC overlaid onto original - because of interpolation the points conflict as they have same depth so its sometimes hard to see the coinciding points 
-    increase_z = 0
-
-    
-    
+    # Output settings
+    increase_z = 0 # z offset for visual aid (as dense pc points coincide with normal pc points) LIMIT THIS
+    skip_pts = True # if we want to skip some points for faster computation/ lower densification
+    n = 3 # skips every nth col and every nth row, hence nxn times less points
 
     for path2img in imgs_path_list:
-        
         
         img_name = (os.path.splitext(path2img)[0]).split('/')[-1] # name of img e.g. A11redlodge0006200010Lane1
         img_type = os.path.splitext(path2img)[1] # jpg
         filename = path2img.split('/')[-1]
         data = None
 
+        # as shown in read_csv function, the values in the columns can be foudn by doing row['file_name']
         for row in csv_img_data: #extract the correct row for correspondign img
             if row['file_name'] == img_name:
                 data = row
@@ -186,7 +176,7 @@ def main():
 
     # newlasname = rootdir_path +f"/Result/LAS result/projected_las"+ LAS_path.split('/')[-1]
     
-    newlasname = os.path.join(rootdir_path,"result",testname+'.las')
+    newlasname = os.path.join(rootdir_path,"result","result_pc"+'.las') # maybe keep name of original image in this 
     
     
     newlas.write(newlasname)
