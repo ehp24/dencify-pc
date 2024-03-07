@@ -14,39 +14,40 @@ def main():
     start_time = time.time()
     
     # fetch paths to data
-    rootdir_path = os.path.dirname(__file__) # gives path to registration full code folder (i.e folder where this file is stored)
-    csv_path = (glob.glob(os.path.join(rootdir_path,"data/raw/csv/*.csv")))[0] # should chekc we only hva eone file
-    imgs_path_list = sorted(glob.glob(os.path.join(rootdir_path,'data/raw/rgb/*')),reverse=True) # returns lsit of images, dont constrain it to be a specific filetype incase png or jpg?
-    LAS_path = (glob.glob(os.path.join(rootdir_path,'data/raw/las/*.LAS')))[0] #should allow LAS or las, and should check we only hva eone file
+    rootdir_path = os.path.dirname(__file__) 
+    csv_path = (glob.glob(os.path.join(rootdir_path,"data/raw/csv/*.csv")))[0] 
+    imgs_path_list = sorted(glob.glob(os.path.join(rootdir_path,'data/raw/rgb/*')),reverse=True) 
+    LAS_path = (glob.glob(os.path.join(rootdir_path,'data/raw/las/*.LAS')))[0]
     
-    # fetch corresponding csv data for the imgs present
+    # extracts csv data and las object
     csv_img_data = read_csv(csv_path,imgs_path_list)
+    las = laspy.read(LAS_path) 
     
     # data about number of images for progress tracking
     no_imgs = len(imgs_path_list)
-    no_rows_extracted = len(csv_img_data) #i.e. the number of imgs we are actually oeprating on
+    no_rows_extracted = len(csv_img_data) # no. of imgs we are operating on
     im_count = 0
     not_present = []
     
-    las = laspy.read(LAS_path) # extract LAS data from path
     # convert LAS points to numpy format
     LAS_points = convertLAS2numpy(las)
     
-    # Manually found error corrections - will vary for different highways 
-    error_correct = [-1,-0.5,1.5] # for first lane of A11 Red lodge, Lane 1 MAYBE PUT THIS IN DATA FILE SEPARATELY
+    # A11 Red Lodge Lane 1 error correction
+    error_correct = [-1,-0.5,1.5] 
 
     # Output settings
-    increase_z = 0 # z offset for visual aid (as dense pc points coincide with normal pc points) LIMIT THIS
-    skip_pts = True # if we want to skip some points for lower densification + less memory (still processed all of them tho so not faster..)
+    increase_z = 0 # z offset for visual aid 
+    skip_pts = True # skip some points for lower densification + less memory 
     n = 3 # skips every nth col and every nth row, hence nxn times less points
 
     for path2img in imgs_path_list:
         
         im_count+=1
         img_name = (os.path.splitext(path2img)[0]).split('/')[-1] # name of img e.g. A11redlodge0006200010Lane1
-        img_type = os.path.splitext(path2img)[1] # jpg
         filename = path2img.split('/')[-1]
-        img_array_uint32 = read_img_uint32(path2img) # img object in np
+        
+        # np array of img
+        img_array_uint32 = read_img_uint32(path2img) 
         
         # extract the csv row (dict) for the correponsing img
         if img_name in csv_img_data.keys():
@@ -55,29 +56,27 @@ def main():
             not_present.append(filename)
             continue
 
-        # project LAS points to img plane (pix coords) REDUNDANT INFO! RGBD?
+        # project LAS points to img plane
         rgbd, projectedimg, projected_LAS_data_map = projection_WCS2PCS(csv_img_data, LAS_points, img_array_uint32, las, error_correct)
         
-        # interpolate the projected depth map
-        # mapped_LAS_pts_rgb = proj_LAS_data_map[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16, though original rgb is redundsnt for now
-        projected_LAS_dmap = projected_LAS_data_map[:,:,:3] # damp = depthmap creates array with just [x_wc_uint32, r_wc_uin32, z_wc_uin32] projected depth map
+        # interpolate the projected dmap = depth map
+        projected_LAS_dmap = projected_LAS_data_map[:,:,:3] # array with just [x_wc_uint32, r_wc_uin32, z_wc_uin32] projected depth map
         interpolated_dmap = interpolate_dmap(projected_LAS_dmap)
         
-        imArray_uint32 = img_array_uint32 *256 #NOT SURE WHAT DOIG N HERE, CONVERTING UINT32 TO ???
-        
-        interpolated_im_depth_map = np.dstack((interpolated_dmap,imArray_uint32)) # combining the orginal rgb vals from the 2D img with the XYZ coords extracted from LAS and interpolated that proiject to the image area 
+        # combine interpolated dmap [x,y,z] and orginal image [rgb]
+        interpolated_im_depth_map = np.dstack((interpolated_dmap,img_array_uint32 *256 )) 
         
         if skip_pts == True:
             interpolated_im_depth_map = interpolated_im_depth_map[::n,::n,:]
-        interpolated_im_depth_map = np.round(interpolated_im_depth_map) # make sure theres no decimal places maybe?
+        interpolated_im_depth_map = np.round(interpolated_im_depth_map)
         
         # data to create LAS 
-        no_pts = interpolated_im_depth_map.shape[0]*interpolated_im_depth_map.shape[1] # number of new las points should just be h x w of the image depth map array
-        new_LAS_points = interpolated_im_depth_map.reshape((no_pts,6)).T # convert 3D array into 2D array of all the points, as converting to LAS doesnt need it in the image structure so [x1,x2,x3...], [y1,y2,y3,...], [z1,z2,z3,....],[r1,r2,r3],....etc
-        nan_row_array = ~np.isnan(new_LAS_points).any(axis = 0) # i think a boolean array where each element indicates whether the corresponding column in new_LAS_points contains at least one NaN value (True if it does, False otherwise)
+        no_pts = interpolated_im_depth_map.shape[0]*interpolated_im_depth_map.shape[1] # tot no. las points = h x w of the image 
+        new_LAS_points = interpolated_im_depth_map.reshape((no_pts,6)).T # convert to 2D array for processing, each row is [x1,x2 ...] then [y1,y2....] etc 
+        nan_row_array = ~np.isnan(new_LAS_points).any(axis = 0) 
         new_LAS_points = new_LAS_points[:,nan_row_array] 
         
-        # combining all of the images points otgether if there ar emultiple images in a super array. first row is x, next y, next z etc. Only 6, xyzrgb
+        # combine las points from all imgs together
         if im_count == 1:
             all_las_pts = new_LAS_points
         else:
@@ -92,8 +91,7 @@ def main():
 
     # convert interpolated np array points to LAS object
     densified_las = convertnumpy2LAS(las,all_las_pts,increase_z) 
-    
-    newlasname = os.path.join(rootdir_path,"result","result_pc"+'.las') # maybe keep name of original image in this 
+    newlasname = os.path.join(rootdir_path,"result","result_pc"+'.las')
     densified_las.write(newlasname)
     
     if no_rows_extracted != no_imgs:
