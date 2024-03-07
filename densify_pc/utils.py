@@ -1,6 +1,6 @@
 """Module utils: general functions """
 import os
-import Image
+from PIL import Image
 import numpy as np
 
 def read_img_uint32(filename):
