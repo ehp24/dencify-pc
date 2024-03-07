@@ -1,14 +1,10 @@
 import glob
 import os
-import pandas as pd
-import csv
 import laspy
 import numpy as np
 import math
-from PIL import Image
 from scipy import interpolate
 import time
-import cv2
 from densify_pc.utils import read_img_uint32
 from densify_pc.dataprocessor import read_csv, convertLAS2numpy
 from densify_pc.projection import rotMat, extrinsicsMat, intrinsicsMat, projection_WCS2PCS
@@ -22,12 +18,12 @@ def main():
     
     start_time = time.time()
     
-    # paths to folders and data
+    # fetch paths to data
     rootdir_path = os.path.dirname(__file__) # gives path to registration full code folder (i.e folder where this file is stored)
     csv_path = (glob.glob(os.path.join(rootdir_path,"data/raw/csv/*.csv")))[0] # should chekc we only hva eone file
     imgs_path_list = sorted(glob.glob(os.path.join(rootdir_path,'data/raw/rgb/*')),reverse=True) # returns lsit of images, dont constrain it to be a specific filetype incase png or jpg?
     LAS_path = (glob.glob(os.path.join(rootdir_path,'data/raw/las/*.LAS')))[0] #should allow LAS or las, and should check we only hva eone file
-    projimg_folder = os.path.join(rootdir_path,"result","projected images")
+    
     # fetched all csv rows for the imgs present in data folder
     csvdata = read_csv(csv_path,imgs_path_list)
     csv_img_data = csvdata.copy() # REDUNDANT?
