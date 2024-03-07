@@ -73,15 +73,13 @@ def extrinsicsMat(rph_list, xyz_list, error_correction): # orientation and posit
 
 
 
-def intrinsicsMat(focal_length_mm):
+def intrinsicsMat():
     """Creates camera intrinsics matrix from camera specs.
-
-    Args:
-        focal_length_mm (float): The focal length of camera in mm.
 
     Returns:
         numpy.ndarray: A 3x3 intrinsics matrix. 
     """
+    focal_length_mm = 8.5 # mm
     CCDW = 2464 # pixels, CCD (image) width 
     CCDH = 2056 # pixels, CCD (image) height
     Xpp = -0.00558 # mm, principle point x coord
@@ -104,8 +102,8 @@ def intrinsicsMat(focal_length_mm):
 
 
 
-def projection_WCS2PCS(intrinsicsMat:np.ndarray, extrinsicsMat:np.ndarray, points: np.ndarray,
-                   map_width, map_height, path2las):
+def projection_WCS2PCS(csv_row, points ,img_np, las, error_correct):
+    
     """Creates rgbd depth map and LAS point map of LAS points that coincide with the images pixels.
 
     Args:
@@ -114,13 +112,27 @@ def projection_WCS2PCS(intrinsicsMat:np.ndarray, extrinsicsMat:np.ndarray, point
         points (numpy.ndarray): The LAS points with columns being each point, rows being x,y,z,1,r,g,b,greyscale.
         map_width (_type_): The width of map (img) in pixels.
         map_height (_type_): The height of map in pixels.
-        path2las (str): The path to LAS file.
+        las (laspy.lasData): The las object.
 
     Returns:
         numpy.ndarray: rgbd_map, LAS_map and projected img.
     """
+    
+    # create extrinsics and intrinsics matrix COULD THIS LIVE INSIDE PROJECTION AND NOT NEED TO BE HERE?
+    rph = [float(csv_row['roll[deg]']), float(csv_row['pitch[deg]']), float(csv_row['heading[deg]'])] # [roll, pitch, heading]
+    xyz = [float(csv_row['projectedX[m]']),float(csv_row['projectedY[m]']),float(csv_row['projectedZ[m]'])] # [x,y,z]
+    extr_mat = extrinsicsMat(rph,xyz,error_correct)
+    intr_mat = np.hstack((intrinsicsMat(),np.array([[0.],[0.],[0.]])))
+    
+    # convert image to numpy and get size
+    map_height = img_np.shape[0]
+    map_width = img_np.shape[1]
+        
+        
+        
+        
     # this function basiaclly projects the LAS onto pix coord system so it can obtain all thr LAS points thst lie inside image bounds
-    las = laspy.read(path2las) # so that we dont have to read las twice, we should do the reading in main script then pas in the la sobject instead
+    # las = laspy.read(path2las) # so that we dont have to read las twice, we should do the reading in main script then pas in the la sobject instead
     x_offset, y_offset, z_offset = las.header.offsets
     x_scale, y_scale, z_scale = las.header.scales
     
@@ -131,8 +143,8 @@ def projection_WCS2PCS(intrinsicsMat:np.ndarray, extrinsicsMat:np.ndarray, point
     LAS_new = []
     
     # convert points from WCS to pixel coord system, each column is a uniwque point
-    points_ccs_hg = np.linalg.inv(extrinsicsMat) @ points[0:4, :] # rows x,y,z,1 and then every col i.e. every point in las pc. We now have homogeneuos coords in camera coord system, not world coord system
-    points_pix_cs_hg = intrinsicsMat @  points_ccs_hg # converts homogeneous world points CCS into homogeneous pixel coord points, inv exmat because need wcs rel2 ccs, but exmat is ccs rel2 wcs
+    points_ccs_hg = np.linalg.inv(extr_mat) @ points[0:4, :] # rows x,y,z,1 and then every col i.e. every point in las pc. We now have homogeneuos coords in camera coord system, not world coord system
+    points_pix_cs_hg = intr_mat @  points_ccs_hg # converts homogeneous world points CCS into homogeneous pixel coord points, inv exmat because need wcs rel2 ccs, but exmat is ccs rel2 wcs
     uv_rows = points_pix_cs_hg[0:2, :].reshape((2, points.shape[1])) # just takes the first two rows of projected_pts_homo (x/s, y/s) and makes new matrix
     w_row = points_pix_cs_hg[2, :].reshape((1, points.shape[1])) # creates 1D row vector of the s values (homogeneous last row of pix cord sustem points)
     w_points = uv_rows / w_row # all LAS points in pixel coord system (non homogeneous) (2 x N array)

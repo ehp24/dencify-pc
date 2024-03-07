@@ -50,25 +50,26 @@ def main():
 
         # extract the csv row (dict) for the correponsing img
         if img_name in csv_img_data.keys():
-            data = csv_img_data[img_name]
+            csv_img_data = csv_img_data[img_name]
         else: # img in data folder is not found in csv file, skip img
             not_present.append(filename)
             continue
 
-        # create extrinsics and intrinsics matrix COULD THIS LIVE INSIDE PROJECTION AND NOT NEED TO BE HERE?
-        f = 8.5 #mm
-        rph = [float(data['roll[deg]']), float(data['pitch[deg]']), float(data['heading[deg]'])] # [roll, pitch, heading]
-        xyz = [float(data['projectedX[m]']),float(data['projectedY[m]']),float(data['projectedZ[m]'])] # [x,y,z]
-        extr_mat = extrinsicsMat(rph,xyz,error_correct)
-        intr_mat = np.hstack((intrinsicsMat(f),np.array([[0.],[0.],[0.]])))
+        # # create extrinsics and intrinsics matrix COULD THIS LIVE INSIDE PROJECTION AND NOT NEED TO BE HERE?
+        # f = 8.5 #mm
+        # rph = [float(data['roll[deg]']), float(data['pitch[deg]']), float(data['heading[deg]'])] # [roll, pitch, heading]
+        # xyz = [float(data['projectedX[m]']),float(data['projectedY[m]']),float(data['projectedZ[m]'])] # [x,y,z]
+        # extr_mat = extrinsicsMat(rph,xyz,error_correct)
+        # intr_mat = np.hstack((intrinsicsMat(f),np.array([[0.],[0.],[0.]])))
         
-        # convert image to numpy and get size
-        img_array_uint32 = read_img_uint32(path2img) 
-        im_height = img_array_uint32.shape[0]
-        im_width = img_array_uint32.shape[1]
+        # # image object in np
+        img_array_uint32 = read_img_uint32(path2img)
+         
+        # im_height = img_array_uint32.shape[0]
+        # im_width = img_array_uint32.shape[1]
         
         # project LAS points to img plane (pix coords)
-        rgbd, projectedimg, LAS_data_array = projection_WCS2PCS(intr_mat, extr_mat, LAS_points, im_width, im_height, LAS_path)
+        rgbd, projectedimg, LAS_data_array = projection_WCS2PCS(csv_img_data, LAS_points, img_array_uint32, las, error_correct)
         
         # interpolate the projected depth map
         # mapped_LAS_pts_rgb = LAS_data_array[:,:,3:] # creates array with just r_wc_uint16,g_wc_uint16,b_wc_uint16, though original rgb is redundsnt for now
