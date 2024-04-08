@@ -12,6 +12,7 @@ def main():
     
     # initialise time 
     start_time = time.time()
+    print("\nStarting densification process")
     
     # fetch paths to data
     rootdir_path = os.path.dirname(__file__) 
@@ -29,6 +30,7 @@ def main():
     im_count = 0
     not_present = []
     
+    print("\nConverting LAS into Numpy points...")
     # convert LAS points to numpy format
     LAS_points = convertLAS2numpy(las)
     
@@ -39,6 +41,7 @@ def main():
     skip_pts = True # skip some points for lower densification + less memory 
     n = 3 # skips every nth col and every nth row, hence nxn times less points
 
+    print("\nBegin iterating through images:")
     for path2img in imgs_path_list:
         
         im_count+=1
@@ -56,6 +59,7 @@ def main():
             continue
 
         # project LAS points to img plane
+        print(f"Projecting point cloud points onto image {im_count}'s plane...")
         rgbd, projectedimg, projected_LAS_data_map = projection_WCS2PCS(csv_img_data, LAS_points, img_array_uint32, las, error_correct)
         
         # interpolate the projected dmap = depth map
@@ -83,10 +87,10 @@ def main():
         
         # update variables for progress bar
         progress = int(im_count/no_rows_extracted*100)
-        print(f"{progress}% done ------- {im_count}/{no_rows_extracted} images processed")
+        print(f"{im_count}/{no_rows_extracted} images processed", end='\n\n')
     
     
-    print("Now creating the LAS file -------->")
+    print("\nProducing the final point cloud LAS file...")
 
     # convert interpolated np array points to LAS object
     densified_las = convertnumpy2LAS(las,all_las_pts,z_offset=200) 
@@ -99,6 +103,7 @@ def main():
         print(not_present)    
     
     end_time = time.time()
+    print("\nDensification complete.")
     print(f'Total runtime: {end_time-start_time}s')
     
 if __name__ == '__main__':
