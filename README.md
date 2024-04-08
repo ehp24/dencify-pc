@@ -12,8 +12,11 @@ Running the File:
 - Output is a LAS point cloud file found in results folder.
 - You will need a point cloud viewer to view the result - recommended is CloudCompare.
 - Only one image is included for processing for demonstration purposes, but multiple images can be processed in one run.
-- Idea is to process mutiple images taken in a sequence to produce a whole section of road in point cloud.
-- Overlay the densified point cloud result and the orginal point cloud file to view comparison.
+- Process mutiple images taken in a sequence to produce a whole section of road in point cloud.
+- View the densified point cloud result and the orginal point cloud file in the same viewer to see the comparison.
 - Point cloud data is LARGE so it will take a minute or so to process each point cloud file (only one provided).
-- Data is confidential so please do not share - belongs to National Highways and the University of Cambridge.
+- Data is confidential so please do not share.
+
+Update:
+ - Data will be removed from Github for now as data belongs to National Highways
 
