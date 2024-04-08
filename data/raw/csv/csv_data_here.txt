@@ -1,0 +1,2 @@
+- Include the relevant CSV file containing image sequence data in this folder.
+- DELETE this txt file when ready to execute program.

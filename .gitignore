@@ -10,9 +10,14 @@ tester.py
 # data
 *.las
 *.LAS
-data/raw/rgb/
-data/raw/las/
-data/raw/csv/
+data/raw/rgb/*.jpg
+data/raw/rgb/*.png
+data/raw/rgb/*.JPEG
+data/raw/las/*.LAS
+data/raw/las/*.las
+data/raw/csv/*.csv
+result/*.LAS
+result/*.las
 
 # Env
 .venv
