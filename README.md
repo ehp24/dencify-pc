@@ -7,7 +7,7 @@ The purpose of this project is to utilise the high resolution detail from 2D roa
 - My algorithm aims to solve this inefficiency - by using camera-lidar fusion to map the images onto the point cloud and register depth infomation, a densified point cloud of the road captured in the image can be created.
 - This means engineers can have all the infomation from both data types in one data form of the 3D point cloud.
 
-
+Running the File:
 - Install the required dependencies in the pyproject.toml file and run main.py
 - Output is a LAS point cloud file found in results folder.
 - You will need a point cloud viewer to view the result - recommended is CloudCompare.
