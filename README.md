@@ -1,22 +1,15 @@
-Project to densify 3D road point clouds using denser road 2D RGB images and camera lidar fusion
+# densify-pc
 
-This script main.py when run on venv conatining necessary dependencies will return a densified point cloud las object in LAS folder
-Have broken down functions into 3 modules within the densify_pc package, dataprocessor.py, projection.py and utils.py, and i have placed my functions into the module depending on the fucntionality of the function.
+The purpose of this project is to utilise the high resolution detail from 2D road images and the depth information from 3D LiDAR point cloud data of road networks to create a denser point cloud representation of the road.
 
-toml file and lock file are used to create virtual env with poetry
+- Currently, 3D point clouds of road networks provided by National Highways do not capture the presence road defects due to the low resolutions of the LiDAR scans obtained.
+- This makes road maintenence very inefficient - engineers have to scroll through the sequence of images taken of road surfaces via surveying vehicles one by one and try to figure out where on the point cloud corresponds to the image location, to then be able to locate where a defect is with respect to the wider road network shown in the point cloud.
+- My algorithm aims to solve this inefficiency - by using camera-lidar fusion to map the images onto the point cloud and register depth infomation, a densified point cloud of the road captured in the image can be created.
+- This means engineers can have all the infomation from both data types in one data form of the 3D point cloud.
 
-I have written unit tests files for modules dataprocessing and utils but NOT projection.
+- Install the required dependencies in the pyproject.toml file and run main.py
+- Only one image is included for processing for demonstration purposes, but multiple images can be processed in one run.
+- You will need a point cloud viewer to view the output - recommended is CloudCompare.
+- Point cloud data is LARGE so it will take a minute or so to process each point cloud file (only one provided).
+- Data is confidential so please do not share! Belongs to National Highways and lent to the University of Cambridge.
 
-__init__.py inside the test file and densify_pc package just mark these folders as packages - this is important. Though they are empty now which is fine.
-
-1. initiate poetry environement wiht poetry init and poetry install if starting fresh
-2. activate the venv using `poetry shell` whilst inside the densify-pc directory
-3. run the code by `python main.py` with the poetry venv activated
-4. Should take aournd 100seconds to process one image. Make sure you have an image in data>raw>img and LAS inside data>raw>las and csv in data>raw>csv. The las needs to correpond to data int he csv, and the img also needs to occur in the csv and in the las highway section.
-5. to run pytest unit tests, type `pytest` and this will run unit tests inside test folder
-
-NOTE: there are still lots of unfinished thinsg e.g. unit tests for projection, interp unit test should test if we have correct values interpolated 
-* Missing test_projection.py unit tests
-* Some docstrings are outdated/ have not been fully completed and i did not change them in time
-* should add type hinting in function arg declaration
-* pytest for inetrpolate function inside data processor shuld check the inetrpolated values are correct
